@@ -138,6 +138,12 @@ def assets(filename):
 
 @app.route("/data/<path:filename>")
 def data(filename):
+    if not (DATA_DIR / filename).exists():
+        # Data not yet generated (update still running after restart).
+        # Return a minimal valid JSON so the frontend doesn't crash.
+        return jsonify({"items_ai": [], "items_all": [], "items_all_raw": [],
+                        "items": [], "site_stats": [], "total_items": 0,
+                        "waiting": True}), 200
     resp = send_from_directory(str(DATA_DIR), filename)
     resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
     return resp
