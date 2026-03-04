@@ -142,7 +142,7 @@ def data(filename):
         # Data not yet generated (update still running after restart).
         # Return a minimal valid JSON so the frontend doesn't crash.
         return jsonify({"items_ai": [], "items_all": [], "items_all_raw": [],
-                        "items": [], "site_stats": [], "total_items": 0,
+                        "site_stats": [], "total_items": 0,
                         "waiting": True}), 200
     resp = send_from_directory(str(DATA_DIR), filename)
     resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"

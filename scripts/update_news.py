@@ -7,8 +7,10 @@ import argparse
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import hashlib
 import json
+import os
 import random
 import re
+import tempfile
 import time
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
@@ -2039,6 +2041,7 @@ def main() -> int:
 
     archive_path = output_dir / "archive.json"
     latest_path = output_dir / "latest-24h.json"
+    latest_all_path = output_dir / "latest-24h-all.json"
     status_path = output_dir / "source-status.json"
     waytoagi_path = output_dir / "waytoagi-7d.json"
     title_cache_path = output_dir / "title-zh-cache.json"
@@ -2210,8 +2213,13 @@ def main() -> int:
         "site_count": len(site_stat),
         "source_count": len({f"{i['site_id']}::{i['source']}" for i in latest_items_ai_dedup}),
         "site_stats": sorted(site_stat.values(), key=lambda x: x["count"], reverse=True),
-        "items": latest_items_ai_dedup,
         "items_ai": latest_items_ai_dedup,
+    }
+
+    latest_all_payload = {
+        "generated_at": iso(now),
+        "total_items_raw": len(latest_items_all),
+        "total_items_all_mode": len(latest_items_all_dedup),
         "items_all_raw": latest_items_all,
         "items_all": latest_items_all_dedup,
     }
@@ -2277,13 +2285,26 @@ def main() -> int:
             "error": str(exc),
         }
 
-    latest_path.write_text(json.dumps(latest_payload, ensure_ascii=False, indent=2), encoding="utf-8")
-    archive_path.write_text(json.dumps(archive_payload, ensure_ascii=False, indent=2), encoding="utf-8")
-    status_path.write_text(json.dumps(status_payload, ensure_ascii=False, indent=2), encoding="utf-8")
-    waytoagi_path.write_text(json.dumps(waytoagi_payload, ensure_ascii=False, indent=2), encoding="utf-8")
-    title_cache_path.write_text(json.dumps(title_cache, ensure_ascii=False, indent=2), encoding="utf-8")
+    def atomic_write(path: Path, content: str) -> None:
+        """Write to a temp file then atomically replace the target."""
+        fd, tmp = tempfile.mkstemp(dir=path.parent, suffix=".tmp")
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                f.write(content)
+            os.replace(tmp, path)
+        except BaseException:
+            os.unlink(tmp)
+            raise
 
-    print(f"Wrote: {latest_path} ({len(latest_items)} items)")
+    atomic_write(latest_path, json.dumps(latest_payload, ensure_ascii=False, indent=2))
+    atomic_write(latest_all_path, json.dumps(latest_all_payload, ensure_ascii=False, indent=2))
+    atomic_write(archive_path, json.dumps(archive_payload, ensure_ascii=False, indent=2))
+    atomic_write(status_path, json.dumps(status_payload, ensure_ascii=False, indent=2))
+    atomic_write(waytoagi_path, json.dumps(waytoagi_payload, ensure_ascii=False, indent=2))
+    atomic_write(title_cache_path, json.dumps(title_cache, ensure_ascii=False, indent=2))
+
+    print(f"Wrote: {latest_path} ({len(latest_items_ai_dedup)} AI items)")
+    print(f"Wrote: {latest_all_path} ({len(latest_items_all)} all items)")
     print(f"Wrote: {archive_path} ({len(archive)} items)")
     print(f"Wrote: {status_path}")
     print(f"Wrote: {waytoagi_path} ({waytoagi_payload.get('count_7d', 0)} items)")

@@ -7,6 +7,8 @@ const state = {
   totalRaw: 0,
   totalAllMode: 0,
   allDedup: true,
+  allLoaded: false,
+  allLoading: false,
   siteFilter: "",
   query: "",
   mode: "ai",
@@ -285,7 +287,11 @@ function renderList() {
   if (!filtered.length) {
     const empty = document.createElement("div");
     empty.className = "empty";
-    empty.textContent = "当前筛选条件下没有结果。";
+    if (state.mode === "all" && !state.allLoaded) {
+      empty.textContent = state.allLoading ? "正在加载全量数据…" : "全量数据尚未加载，请稍候。";
+    } else {
+      empty.textContent = "当前筛选条件下没有结果。";
+    }
     newsListEl.appendChild(empty);
     return;
   }
@@ -360,6 +366,26 @@ async function loadNewsData() {
   return res.json();
 }
 
+async function loadAllModeData() {
+  if (state.allLoaded || state.allLoading) return;
+  state.allLoading = true;
+  try {
+    const res = await fetch(`./data/latest-24h-all.json?t=${Date.now()}`);
+    if (!res.ok) throw new Error(`加载全量数据失败: ${res.status}`);
+    const payload = await res.json();
+    state.itemsAllRaw = payload.items_all_raw || [];
+    state.itemsAll = payload.items_all || [];
+    state.totalRaw = payload.total_items_raw || state.itemsAllRaw.length;
+    state.totalAllMode = payload.total_items_all_mode || state.itemsAll.length;
+    state.allLoaded = true;
+  } finally {
+    state.allLoading = false;
+  }
+  renderModeSwitch();
+  renderSiteFilters();
+  renderList();
+}
+
 async function loadWaytoagiData() {
   const res = await fetch(`./data/waytoagi-7d.json?t=${Date.now()}`);
   if (!res.ok) throw new Error(`加载 waytoagi-7d.json 失败: ${res.status}`);
@@ -371,13 +397,11 @@ async function init() {
 
   if (newsResult.status === "fulfilled") {
     const payload = newsResult.value;
-    state.itemsAi = payload.items_ai || payload.items || [];
-    state.itemsAllRaw = payload.items_all_raw || payload.items_all || payload.items || [];
-    state.itemsAll = payload.items_all || payload.items || [];
+    state.itemsAi = payload.items_ai || [];
     state.statsAi = payload.site_stats || [];
     state.totalAi = payload.total_items || state.itemsAi.length;
-    state.totalRaw = payload.total_items_raw || state.itemsAllRaw.length;
-    state.totalAllMode = payload.total_items_all_mode || state.itemsAll.length;
+    state.totalRaw = payload.total_items_raw || 0;
+    state.totalAllMode = payload.total_items_all_mode || 0;
     state.generatedAt = payload.generated_at;
 
     setStats(payload);
@@ -422,6 +446,7 @@ modeAllBtnEl.addEventListener("click", () => {
   renderModeSwitch();
   renderSiteFilters();
   renderList();
+  if (!state.allLoaded) loadAllModeData();
 });
 
 if (allDedupeToggleEl) {
